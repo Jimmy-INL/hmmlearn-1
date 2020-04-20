@@ -8,8 +8,9 @@ from scipy.special import logsumexp
 from sklearn.base import BaseEstimator
 from sklearn.utils import check_array, check_random_state
 
-from . import _hmmc, _utils
+from . import  _utils
 from .utils import normalize, log_normalize, iter_from_X_lengths, log_mask_zero
+from . import hmmc_python
 
 
 _log = logging.getLogger(__name__)
@@ -243,13 +244,18 @@ class _TimeBaseHMM(BaseEstimator):
         X = check_array(X)
         n_samples = X.shape[0]
         logprob = 0
+        import pdb; pdb.set_trace()
         posteriors = np.zeros((n_samples, self.n_components))
         for i, j in iter_from_X_lengths(X, lengths):
+            import pdb; pdb.set_trace()
             framelogprob = self._compute_log_likelihood(X[i:j])
+            import pdb; pdb.set_trace()
             logprobij, fwdlattice = self._do_forward_pass(framelogprob)
             logprob += logprobij
 
+            import pdb; pdb.set_trace()
             bwdlattice = self._do_backward_pass(framelogprob)
+            import pdb; pdb.set_trace()
             posteriors[i:j] = self._compute_posteriors(fwdlattice, bwdlattice)
         return logprob, posteriors
 
@@ -339,6 +345,7 @@ class _TimeBaseHMM(BaseEstimator):
             posteriors.
         score : Compute the log probability under the model.
         """
+        import pdb; pdb.set_trace()
         _utils.check_is_fitted(self, "startprob_")
         self._check()
 
@@ -502,15 +509,17 @@ class _TimeBaseHMM(BaseEstimator):
 
     def _do_viterbi_pass(self, framelogprob):
         n_samples, n_components = framelogprob.shape
-        state_sequence, logprob = _hmmc._viterbi(
+        state_sequence, logprob = hmmc_python._viterbi(
             n_samples, n_components, log_mask_zero(self.startprob_),
             log_mask_zero(self.transmat_), framelogprob)
         return logprob, state_sequence
 
     def _do_forward_pass(self, framelogprob):
         n_samples, n_components = framelogprob.shape
-        fwdlattice = np.zeros((n_samples, n_components))
-        _hmmc._forward(n_samples, n_components,
+        # modification!
+        # fwdlattice = np.zeros((n_samples, n_components))
+        fwdlattice = np.zeros((n_samples, n_samples * n_components))
+        hmmc_python.forward(n_samples, n_components,
                        log_mask_zero(self.startprob_),
                        log_mask_zero(self.transmat_),
                        framelogprob, fwdlattice)
@@ -520,7 +529,7 @@ class _TimeBaseHMM(BaseEstimator):
     def _do_backward_pass(self, framelogprob):
         n_samples, n_components = framelogprob.shape
         bwdlattice = np.zeros((n_samples, n_components))
-        _hmmc._backward(n_samples, n_components,
+        hmmc_python._backward(n_samples, n_components,
                         log_mask_zero(self.startprob_),
                         log_mask_zero(self.transmat_),
                         framelogprob, bwdlattice)
@@ -549,8 +558,13 @@ class _TimeBaseHMM(BaseEstimator):
             these should be ``n_samples``.
         """
         init = 1. / self.n_components
-        if 's' in self.init_params or not hasattr(self, "startprob_"):
-            self.startprob_ = np.full(self.n_components, init)
+        # modification!
+        # if 's' in self.init_params or not hasattr(self, "startprob_"):
+        #     self.startprob_ = np.full(self.n_components, init)
+        import pdb; pdb.set_trace()
+        self.startprob_ = np.zeros(self.n_components * self.n_samples)
+        self.startprob_[0] = 1.
+        
         if 't' in self.init_params or not hasattr(self, "transmat_"):
             import pdb; pdb.set_trace()
             # I shouldn't be initializing here!
@@ -686,7 +700,7 @@ class _TimeBaseHMM(BaseEstimator):
                 return
 
             log_xi_sum = np.full((n_components, n_components), -np.inf)
-            _hmmc._compute_log_xi_sum(n_samples, n_components, fwdlattice,
+            hmmc_python._compute_log_xi_sum(n_samples, n_components, fwdlattice,
                                       log_mask_zero(self.transmat_),
                                       bwdlattice, framelogprob,
                                       log_xi_sum)
@@ -841,28 +855,37 @@ class _BaseHMM(BaseEstimator):
         score : Compute the log probability under the model.
         decode : Find most likely state sequence corresponding to ``X``.
         """
+        import pdb; pdb.set_trace()
         _utils.check_is_fitted(self, "startprob_")
         self._check()
 
         X = check_array(X)
         n_samples = X.shape[0]
         logprob = 0
+        # check this is the right shape
+        import pdb; pdb.set_trace()
         posteriors = np.zeros((n_samples, self.n_components))
         for i, j in iter_from_X_lengths(X, lengths):
+            import pdb; pdb.set_trace()
             framelogprob = self._compute_log_likelihood(X[i:j])
+            import pdb; pdb.set_trace()
             logprobij, fwdlattice = self._do_forward_pass(framelogprob)
             logprob += logprobij
-
+            import pdb; pdb.set_trace()
             bwdlattice = self._do_backward_pass(framelogprob)
+            import pdb; pdb.set_trace()
             posteriors[i:j] = self._compute_posteriors(fwdlattice, bwdlattice)
         return logprob, posteriors
 
     def get_fwd_lattice(self, X, lengths=None):
+        import pdb; pdb.set_Trace()
         _utils.check_is_fitted(self, "startprob_")
         self._check()
 
         X = check_array(X)
+        import pdb; pdb.set_trace()
         framelogprob = self._compute_log_likelihood(X)
+        import pdb; pdb.set_trace()
         logprobij, fwdlattice = self._do_forward_pass(framelogprob)
         return fwdlattice
             
@@ -1105,15 +1128,16 @@ class _BaseHMM(BaseEstimator):
 
     def _do_viterbi_pass(self, framelogprob):
         n_samples, n_components = framelogprob.shape
-        state_sequence, logprob = _hmmc._viterbi(
+        state_sequence, logprob = hmmc_python._viterbi(
             n_samples, n_components, log_mask_zero(self.startprob_),
             log_mask_zero(self.transmat_), framelogprob)
         return logprob, state_sequence
 
     def _do_forward_pass(self, framelogprob):
         n_samples, n_components = framelogprob.shape
-        fwdlattice = np.zeros((n_samples, n_components))
-        _hmmc._forward(n_samples, n_components,
+        n_possibilities = n_samples * n_components
+        fwdlattice = np.zeros((n_samples, n_possibilities))
+        hmmc_python._forward(n_samples, n_components,
                        log_mask_zero(self.startprob_),
                        log_mask_zero(self.transmat_),
                        framelogprob, fwdlattice)
@@ -1122,8 +1146,11 @@ class _BaseHMM(BaseEstimator):
 
     def _do_backward_pass(self, framelogprob):
         n_samples, n_components = framelogprob.shape
-        bwdlattice = np.zeros((n_samples, n_components))
-        _hmmc._backward(n_samples, n_components,
+        # modification
+        n_possibilities = n_samples * n_components
+        # bwdlattice = np.zeros((n_samples, n_components))
+        bwdlattice = np.zeros((n_samples, n_samples * n_components))
+        hmmc_python._backward(n_samples, n_components,
                         log_mask_zero(self.startprob_),
                         log_mask_zero(self.transmat_),
                         framelogprob, bwdlattice)
@@ -1287,8 +1314,9 @@ class _BaseHMM(BaseEstimator):
             if n_samples <= 1:
                 return
 
-            log_xi_sum = np.full((n_components, n_components), -np.inf)
-            _hmmc._compute_log_xi_sum(n_samples, n_components, fwdlattice,
+            n_possibilities = n_components * n_samples
+            log_xi_sum = np.full((n_possibilities, n_possibilities), -np.inf)
+            hmmc_python._compute_log_xi_sum(n_samples, n_components, fwdlattice,
                                       log_mask_zero(self.transmat_),
                                       bwdlattice, framelogprob,
                                       log_xi_sum)
