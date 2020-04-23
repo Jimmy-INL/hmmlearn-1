@@ -220,15 +220,30 @@ class TimedGaussianHMM(_TimeBaseHMM):
             logprobij, fwdlattice = self._do_forward_pass(framelogprob)
             logprob += logprobij
 
-            import pdb; pdb.set_trace()
             bwdlattice = self._do_backward_pass(framelogprob)
-            import pdb; pdb.set_trace()
-            posteriors[i:j] = self._compute_posteriors(fwdlattice, bwdlattice)
+        posteriors[i:j] = self._compute_posteriors(fwdlattice, bwdlattice)
         return logprob, posteriors
 
+    # compute the log probability of a video under a model, ONLY using the fwd lattice
+    def score_samples_fwdlattice(self, X, lengths=None):
+        framelogprob = self._compute_log_likelihood(X)
+        logprob, fwdlattice = self._do_forward_pass(framelogprob)
+        with np.errstate(under="ignore"):
+            # convert to probability space and normalize
+            fwdlattice = np.exp(fwdlattice)
+            fwdlattice /= fwdlattice.sum(axis=1)[:, np.newaxis]
+        
+        return logprob, fwdlattice
+
     def predict_proba(self, X, lengths=None):
-        _, posteriors = self.score_samples(X, lengths)
-        return posteriors
+        # these are probabilities, not logs
+        _, posteriors = self.score_samples_fwdlattice(X, lengths)
+        # now let's change from (10, 30) to (10, 3)
+        condensed_probs = np.zeros((10, 3))
+        condensed_probs[:, 0] = posteriors[:, :10].sum(axis=1)
+        condensed_probs[:, 1] = posteriors[:, 10:20].sum(axis=1)
+        condensed_probs[:, 2] = posteriors[:, 20:].sum(axis=1)
+        return condensed_probs
 
     # train a model
     def fit(self, X, lengths=None):
@@ -442,6 +457,7 @@ class TimedGaussianHMM(_TimeBaseHMM):
                 stats['obs*obs.T'] += np.einsum(
                     'ij,ik,il->jkl', posteriors, obs, obs)
 
+    # returns logprob of last row, fwdlattice
     def _do_forward_pass(self, framelogprob):
         log_startprob = log_mask_zero(self.startprob_)
         log_transmat = log_mask_zero(self.transmat_)
@@ -453,39 +469,36 @@ class TimedGaussianHMM(_TimeBaseHMM):
         for t in range(1, self.n_samples):
             for to_idx in range(self.n_possibilities):
                 for from_idx in range(self.n_possibilities):
-                    print(from_idx, to_idx)
-                    if to_idx == 1 and from_idx == 0:
-                        import pdb; pdb.set_trace()
-                    if to_idx == 10 and from_idx == 0:
-                        import pdb; pdb.set_trace()
-                    save_value = fwdlattice[t - 1, from_idx] + log_transmat[to_idx, from_idx]
-                    if save_value != -np.inf:
-                        import pdb; pdb.set_trace()
                     work_buffer[from_idx] = fwdlattice[t - 1, from_idx] + log_transmat[to_idx, from_idx]
-                import pdb; pdb.set_trace()
                 to_hidden_state = int(to_idx // 10)
                 fwdlattice[t, to_idx] = logsumexp(work_buffer) + framelogprob[t, to_hidden_state]
-                                                                            
+
         with np.errstate(under="ignore"):
             return logsumexp(fwdlattice[-1]), fwdlattice
 
-    def _do_backward_pass(framelogprob):
+    def _do_backward_pass(self, framelogprob):
         log_startprob = log_mask_zero(self.startprob_)
         log_transmat = log_mask_zero(self.transmat_)
         bwdlattice = np.zeros((self.n_samples, self.n_possibilities))
         work_buffer = np.zeros((self.n_possibilities, self.n_samples))
 
+        # Set uniform probability of spending 1-7 timesteps in the final state
         bwdlattice[-1] = -np.inf
-        bwdlattice[-1, -1] = 0.
+        # states 20-29 represent hidden state 2
+        bwdlattice[-1, 20:27] = np.log(1./7)
 
-        for t in range(n_samples - 2, -1, -1):
-            for from_idx in range(n_possibilities):
-                for to_idx in range(n_possibilities):
+        for t in range(self.n_samples - 2, -1, -1):
+            for from_idx in range(self.n_possibilities):
+                for to_idx in range(self.n_possibilities):
                     to_hidden_state = to_idx // 10
-                    work_buffer[to_idx] = (log_transmat[from_idx, to_idx]
+                    save_value = (log_transmat[to_idx, from_idx]
+                                           + framelogprob[t + 1, to_hidden_state]
+                                           + bwdlattice[t + 1, to_idx])
+                    work_buffer[to_idx] = (log_transmat[to_idx, from_idx]
                                            + framelogprob[t + 1, to_hidden_state]
                                            + bwdlattice[t + 1, to_idx])
                 bwdlattice[t, from_idx] = logsumexp(work_buffer)
+        return bwdlattice
 
 
     def _do_mstep(self, stats):
