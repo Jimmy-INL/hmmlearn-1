@@ -24,7 +24,9 @@ from .utils import (
     fill_covars, iter_from_X_lengths, log_mask_zero, log_normalize, normalize)
 import sys
 sys.path.append('/Users/julianalverio/code/sentence_tracker/models_and_data/')
+sys.path.insert(0, '/Users/julianalverio/code/sentence_tracker/')
 from time_hmm import make_transition_matrix
+sys.path.pop(0)
 from .base import ConvergenceMonitor
 
 import logging
@@ -37,7 +39,7 @@ from sklearn.utils import check_array
 
 from .utils import normalize, log_normalize, iter_from_X_lengths, log_mask_zero
 
-__all__ = ["GMMHMM", "GaussianHMM", "MultinomialHMM", "TimeGaussianhmm"]
+__all__ = ["GMMHMM", "GaussianHMM", "MultinomialHMM", "TimedGaussianHMM"]
 
 
 _log = logging.getLogger(__name__)
@@ -234,6 +236,10 @@ class TimedGaussianHMM(_TimeBaseHMM):
             fwdlattice /= fwdlattice.sum(axis=1)[:, np.newaxis]
         
         return logprob, fwdlattice
+
+    # working
+    def predict_proba_simple(self, X, lengths=None):
+        
 
     def predict_proba(self, X, lengths=None):
         # these are probabilities, not logs
