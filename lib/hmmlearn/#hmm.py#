@@ -24,9 +24,7 @@ from .utils import (
     fill_covars, iter_from_X_lengths, log_mask_zero, log_normalize, normalize)
 import sys
 sys.path.append('/Users/julianalverio/code/sentence_tracker/models_and_data/')
-sys.path.insert(0, '/Users/julianalverio/code/sentence_tracker/')
 from time_hmm import make_transition_matrix
-sys.path.pop(0)
 from .base import ConvergenceMonitor
 
 import logging
@@ -38,9 +36,8 @@ from sklearn.base import BaseEstimator
 from sklearn.utils import check_array
 
 from .utils import normalize, log_normalize, iter_from_X_lengths, log_mask_zero
-from scipy.stats import norm
 
-__all__ = ["GMMHMM", "GaussianHMM", "MultinomialHMM", "TimedGaussianHMM"]
+__all__ = ["GMMHMM", "GaussianHMM", "MultinomialHMM", "TimeGaussianhmm"]
 
 
 _log = logging.getLogger(__name__)
@@ -238,30 +235,7 @@ class TimedGaussianHMM(_TimeBaseHMM):
         
         return logprob, fwdlattice
 
-    # working
-    # predict only what the hmm thinks of that frame
-    def predict_proba_simple(self, X, lengths=None):
-        all_model_preds = list()
-        for value in X:
-            model_preds = list()
-            for mean, covar in zip(self.means_, self.covars_):
-                dist = norm(loc=mean, scale=covar)
-                try:
-                    prediction = dist.pdf(value)
-                except:
-                    import pdb; pdb.set_trace()
-                    pass
-                model_preds.append(prediction)
-            all_model_preds.append(model_preds)
-        all_model_preds = np.array(all_model_preds)
-        all_model_preds = np.squeeze(all_model_preds)  # (10, 3)
-        all_model_preds /= all_model_preds.sum(axis=1)[:, np.newaxis]
-        return all_model_preds
-                
-                                   
-
-    def predict_proba(self, X, lengths=None):
-        # these are probabilities, not logs
+    def predict_proba(self, X, lengths=None):        # these are probabilities, not logs
         _, posteriors = self.score_samples_fwdlattice(X, lengths)
         # now let's change from (10, 30) to (10, 3)
         condensed_probs = np.zeros((10, 3))
