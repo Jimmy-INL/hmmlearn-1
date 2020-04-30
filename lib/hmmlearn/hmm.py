@@ -17,17 +17,17 @@ from scipy.special import logsumexp
 from sklearn import cluster
 from sklearn.utils import check_random_state
 
-from . import _utils
-from .stats import log_multivariate_normal_density
-from .base import _BaseHMM, _TimeBaseHMM
-from .utils import (
+import _utils
+from stats import log_multivariate_normal_density
+from base import _BaseHMM, _TimeBaseHMM
+from utils import (
     fill_covars, iter_from_X_lengths, log_mask_zero, log_normalize, normalize)
 import sys
 sys.path.append('/Users/julianalverio/code/sentence_tracker/models_and_data/')
 sys.path.insert(0, '/Users/julianalverio/code/sentence_tracker/')
 from time_hmm import make_transition_matrix
 sys.path.pop(0)
-from .base import ConvergenceMonitor
+from base import ConvergenceMonitor
 
 import logging
 import string
@@ -37,7 +37,7 @@ from collections import deque
 from sklearn.base import BaseEstimator
 from sklearn.utils import check_array
 
-from .utils import normalize, log_normalize, iter_from_X_lengths, log_mask_zero
+from utils import normalize, log_normalize, iter_from_X_lengths, log_mask_zero
 from scipy.stats import norm
 
 __all__ = ["GMMHMM", "GaussianHMM", "MultinomialHMM", "TimedGaussianHMM"]

@@ -8,9 +8,9 @@ from scipy.special import logsumexp
 from sklearn.base import BaseEstimator
 from sklearn.utils import check_array, check_random_state
 
-from . import  _utils
-from .utils import normalize, log_normalize, iter_from_X_lengths, log_mask_zero
-from . import hmmc_python
+import  _utils
+from utils import normalize, log_normalize, iter_from_X_lengths, log_mask_zero
+import hmmc_python
 
 
 _log = logging.getLogger(__name__)
