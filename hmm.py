@@ -23,8 +23,7 @@ from base import _BaseHMM, _TimeBaseHMM
 from utils import (
     fill_covars, iter_from_X_lengths, log_mask_zero, log_normalize, normalize)
 import sys
-sys.path.append('/Users/julianalverio/code/sentence_tracker/models_and_data/')
-sys.path.insert(0, '/Users/julianalverio/code/sentence_tracker/')
+sys.path.insert(0, '/storage/jalverio/hmmlearn')
 from time_hmm import make_transition_matrix
 sys.path.pop(0)
 from base import ConvergenceMonitor

@@ -13,10 +13,8 @@ class EnsembleHMM(object):
         self.num_states = num_states
         self.num_frames = num_frames
         if not prefix:
-            if os.path.exists('/Users/julianalverio/code/sentence_tracker/models_and_data'):
-                prefix = '/Users/julianalverio/code/sentence_tracker/models_and_data'
-            elif os.path.exists('/storage/jalverio/sentence_tracker/models_and_data'):
-                prefix = '/storage/jalverio/sentence_tracker/models_and_data'
+            if os.path.exists('/storage/jalverio/hmmlearn/tuned_params'):
+                prefix = '/storage/jalverio/hmmlearn/tuned_params'
             else:
                 assert False, 'I could not find a good path to initialize the hmms in the init of EnsembleMultivariateMultinomial'
         self.prefix = prefix
