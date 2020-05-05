@@ -15,12 +15,15 @@ class EnsembleHMM(object):
         if not prefix:
             if os.path.exists('/storage/jalverio/hmmlearn/tuned_params'):
                 prefix = '/storage/jalverio/hmmlearn/tuned_params'
+            elif os.path.exists('/Users/julianalverio/code/hmmlearn/tuned_params'):
+                prefix = '/Users/julianalverio/code/hmmlearn/tuned_params'
             else:
                 assert False, 'I could not find a good path to initialize the hmms in the init of EnsembleMultivariateMultinomial'
         self.prefix = prefix
         if train:
             self.train_ensemble()
         models = dict()
+        models_dir = self.prefix
         models_dir = os.path.join(self.prefix, 'hmms')
         file_regex = '(\d+)_.*\.npy'
         matrix_files = os.listdir(models_dir)
