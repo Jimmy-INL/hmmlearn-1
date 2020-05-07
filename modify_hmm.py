@@ -72,4 +72,3 @@ for model_idx in range(5):
     means = np.load(means_path)
     print('means', means)
     print('covars', covars)
-

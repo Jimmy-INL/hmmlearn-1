@@ -248,6 +248,10 @@ class TimedGaussianHMM(_TimeBaseHMM):
                 try:
                     prediction = dist.pdf(value)
                 except:
+                    print('ALERT! Message from Julian. I crashed in predict_proba_simple() in hmmlearn/hmm.py')
+                    print('mean', mean)
+                    print('covar', covar)
+                    print('value', value)
                     import pdb; pdb.set_trace()
                     pass
                 model_preds.append(prediction)
