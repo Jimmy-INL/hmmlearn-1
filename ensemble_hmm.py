@@ -116,7 +116,7 @@ class EnsembleHMM(object):
 
     # this only accepts a single video!
     # main function for computing the reward from a video
-    def distribution_distance_single_video(self, video, episode):
+    def distribution_distance_single_video(self, video):
         feature_dict, length, num_features = self._unpack_video(video)
         probs_dict = dict()  # map from feature_number to a list of probs, one matrix per frame
         for feature_idx in range(num_features):
@@ -124,6 +124,7 @@ class EnsembleHMM(object):
             model = self.models[feature_idx]
             probs = model.predict_proba_simple(feature_video)  # (10, 3)  ==  (num_frames, num_states)
             probs_dict[feature_idx] = probs
+        
         all_probs = np.array(list(zip(probs_dict.values())))  # (1, 5, 10, 3)
         all_probs = np.squeeze(all_probs)  # (5, 10, 3) == (num_features, num_frames/video, num_states)
         all_probs_original = all_probs.copy()  # for debugging
