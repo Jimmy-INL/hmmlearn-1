@@ -8,29 +8,11 @@ import numpy as np
 import pickle
 from PIL import Image
 import os
+from np.random import normal, uniform, choice
 
 
 env = gym.make('FetchPickAndPlace-v1', reward_type='visual', reward_scale=5, dir_name='')
 env.reset()
-
-
-def randomize_fingers():
-    sample = np.random.uniform(0, 1)
-    if sample < 0.5:
-        # get the right finger out of the way
-        env.sim.data.set_joint_qpos('robot0:r_gripper_finger_joint', 0.04)
-        # get the left finger into position
-        l_target_position = np.random.uniform(-0.04, 0.04)
-        env.sim.data.set_joint_qpos('robot0:l_gripper_finger_joint', l_target_position)
-        r_target_position = np.random.uniform(-l_target_position, 0.04)
-        env.sim.data.set_joint_qpos('robot0:r_gripper_finger_joint', r_target_position)
-    else:
-        env.sim.data.set_joint_qpos('robot0:l_gripper_finger_joint', 0.04)
-        r_target_position = np.random.uniform(-0.04, 0.04)
-        env.sim.data.set_joint_qpos('robot0:r_gripper_finger_joint', r_target_position)
-        l_target_position = np.random.uniform(-r_target_position, 0.04)
-        env.sim.data.set_joint_qpos('robot0:l_gripper_finger_joint', l_target_position)
-
 
 def generate_pickup_dataset():
     video_counter = 0
@@ -40,16 +22,72 @@ def generate_pickup_dataset():
         success = generate_pickup_trajectory(video_counter)
         video_counter += int(success)
 
-def get_robot_position():
-    r_finger_position = env.sim.data.get_body_xipos('robot0:r_gripper_finger_link')
-    l_finger_position = env.sim.data.get_body_xipos('robot0:l_gripper_finger_link')
-    mean_position = np.stack([l_finger_position, r_finger_position], axis=0).mean(axis=0)
-    return mean_position
+def get_noisy_action(action):
+    noise = normal(loc=action, std=0.01)
+    return action + noise
 
+def constrain_target(target):
+    target = target.copy()
+    target[0] = max(target[0], 1.05)
+    target[0] = min(target[0], 1.55)
+    target[1] = max(target[1], 0.4)
+    target[1] = min(target[1], 1.05)
+    target[2] = max(target[2], 0.45)
+    return target
+
+def noisy_move_to_position(target, target_fingers, precision=None, random_fingers=False):
+    observations = list()
+    for _ in range(25):
+        vector_to_target = target - env.get_robot_position()
+        unit_vector_to_target = vector_to_target / np.linalg.norm(vector_to_target)
+        magnitude = np.random.uniform(low=-0.03, high=0.03)
+        action = unit_vector_to_target * magnitude
+        noisy_action = get_noisy_action(action)
+        finger_action = choice([0, 1]) if random_figners else target_fingers
+        env.step(noisy_action)
+        observations.append(env.get_obs())
+        if precision:
+            difference = np.linalg.norm(env.get_robot_position() - target)
+            if difference <  precision:
+                break
+    return observations
+        
+#working
 def generate_pickup_trajectory(video_counter):
     all_data = list()
-    # robot_position = env.sim.data.get_site_xpos('robot0:grip')
-    robot_position = get_robot_position()
+
+    # random jitters to start
+    num_jitters = round(abs(normal(loc=0, scale=2)))
+    for jitter in range(num_jitters):
+        action = uniform(low=-0.03, high=0.03, size=4)
+        env.step(action)
+
+    # move to a position within a large cube around the block
+    object_position = env.get_object_position()
+    target_x = uniform(low=object_position[0] - 0.1, high=object_position[0] + 0.1)
+    target_y = uniform(low=object_position[1] - 0.1, high=object_position[1] + 0.1)
+    target_z = uniform(low=object_position[2] - 0.1, high=object_position[2] + 0.1)
+    target_width = choice([0, 1])
+    noisy_move_to_position([target_x, target_y, target_z], target_width, random_fingers=True, precision=0.1)
+
+    # move to a position within a small cube around the block (maybe bump into it)
+    object_position = env.get_object_position()
+    target_x = uniform(low=object_position[0] - 0.05, high=object_position[0])
+    target_y = uniform(low=object_position[1] - 0.05, high=object_position[1])
+    target_z = uniform(low=object_position[2] - 0.05, high=object_position[2])
+    target_width = 1
+    noisy_move_to_target([target_x, target_y, target_z], target_width, random_fingers=False, precision=0.05)
+
+    
+
+    
+    
+                       
+    
+
+    
+    all_data = list()
+    robot_position = env.get_robot_position()
     object_position_quat = env.sim.data.get_joint_qpos('object0:joint')
     object_starting_z = object_position_quat[2].copy()
     finger_width = env.get_finger_width()
