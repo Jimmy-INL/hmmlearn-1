@@ -193,14 +193,6 @@ class TimedGaussianHMM(_TimeBaseHMM):
         self.n_possibilities = num_frames * n_components
         self.checked = False
 
-    # @property
-    # def covars_(self):
-    #     """Return covars as a full matrix."""
-    #     return fill_covars(self._covars_, self.covariance_type,
-    #                        self.n_components, self.n_features)
-
-    #         # _utils.check_is_fitted(self, "startprob_")  # this is useless
-         # self._check()
 
     def score(self, X, lengths=None):
         import pdb; pdb.set_trace()
@@ -237,8 +229,8 @@ class TimedGaussianHMM(_TimeBaseHMM):
         
         return logprob, fwdlattice
 
-    # working
     # predict only what the hmm thinks of that frame
+    # WE DON'T USE THIS ANYMORE. WE USE THE VERSION IN ENSEMBLE_HMM.PY
     def predict_proba_simple(self, X, lengths=None):
         all_model_preds = list()
         for value in X:
@@ -262,8 +254,8 @@ class TimedGaussianHMM(_TimeBaseHMM):
         return all_model_preds
                 
                                    
-
     def predict_proba(self, X, lengths=None):
+        import pdb; pdb.set_trace()
         # these are probabilities, not logs
         _, posteriors = self.score_samples_fwdlattice(X, lengths)
         # now let's change from (10, 30) to (10, 3)
@@ -487,6 +479,7 @@ class TimedGaussianHMM(_TimeBaseHMM):
 
     # returns logprob of last row, fwdlattice
     def _do_forward_pass(self, framelogprob):
+        import pdb; pdb.set_trace()
         log_startprob = log_mask_zero(self.startprob_)
         log_transmat = log_mask_zero(self.transmat_)
 

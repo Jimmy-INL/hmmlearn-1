@@ -43,7 +43,7 @@ class EnsembleHMM(object):
             # warning! hard-coded number of samples (number of frames in a video)
             model = TimedGaussianHMM(n_components=self.num_states, num_frames=self.num_frames, n_iter=100, verbose=True, params='mc', covariance_type='diag', init_params='mc')
             # model.startprob_ = np.load(startprob_path)
-            model.startprob_ = np.zeros(30)
+            model.startprob_ = np.zeros(2)
             model.startprob_[0] = 1.
             model.covars_ = np.load(covars_path)[:, :, 0]
             model._covars_ = model.covars_
@@ -114,38 +114,57 @@ class EnsembleHMM(object):
         
         return model_preds, ensemble_preds
 
+    # predict what the hmm thinks of one isolated frame.
+    # modified to only accept ONE frame
+    def predict_proba_simple(self, value, model):
+        model_preds = list()
+        for mean, covar in zip(model.means_, model.covars_):
+            dist = norm(loc=mean, scale=covar)
+            try:
+                prediction = dist.pdf(value)
+            except:
+                print('ALERT! I crashed in predict_proba_simple() in ensemble_hmm.py()')
+                print('mean', mean)
+                print('covar', covar)
+                print('value', value)
+                import pdb; pdb.set_trace()
+                pass
+            model_preds.append(prediction)
+        model_preds = np.array(model_preds)
+        model_preds = np.squeeze(model_preds)
+        model_preds /= model_preds.sum()
+        return model_preds
+            
+                    
     # this only accepts a single video!
     # main function for computing the reward from a video
     def distribution_distance_single_video(self, video):
         feature_dict, length, num_features = self._unpack_video(video)
         probs_dict = dict()  # map from feature_number to a list of probs, one matrix per frame
+        dist_dict = dict()
         for feature_idx in range(num_features):
             feature_video = np.array(feature_dict[feature_idx])[:, np.newaxis]
             model = self.models[feature_idx]
-            probs = model.predict_proba_simple(feature_video)  # (10, 3)  ==  (num_frames, num_states)
+            import pdb; pdb.set_trace()
+            fwd_lattice = model.get_fwd_lattice(feature_video)
+            probs = fwd_lattice[-1]
+            probs /= np.sum(probs)
+            # probs = self.predict_proba_simple(feature_video[-1], model)  # (10, 3) == (num_frames, num_states)
             probs_dict[feature_idx] = probs
-        
-        all_probs = np.array(list(zip(probs_dict.values())))  # (1, 5, 10, 3)
-        all_probs = np.squeeze(all_probs)  # (5, 10, 3) == (num_features, num_frames/video, num_states)
-        all_probs_original = all_probs.copy()  # for debugging
-        all_probs = all_probs[:, -1, :]  # grab last frame
+            dist_dict[feature_idx] = self._compute_reward_from_distribution(probs)
 
-        all_probs /= all_probs.sum(axis=1)[:, np.newaxis]  # normalize to probability space
-        all_distances = list()
-        for feature_idx in range(num_features):
-            feature_dist = all_probs[feature_idx]
-            distance = self._distance_from_target(feature_dist)
-            all_distances.append(distance)
-        mean_distance = np.mean(all_distances)
-        mean_probs = np.mean(all_probs, axis=0)
-        mean_probs /= np.sum(mean_probs)  # normalize probabilities
-        most_likely_state = np.argmax(mean_probs)
-        return mean_distance, mean_probs, most_likely_state
+        # TODO: later on, you can predict the most likely state for the whole process
+        # first, find which state prediction has the fewest states
+        # second, convert all the probabilities into the fewest number of states
+        # third, average all of these together to find the average probability for the overall model
+        # fourth, find the most likely state in this average
 
-    # if you don't have a target, the target is [0, 0, 1]. Find the custom earth-mover distance
-    # if you have a target, ignore the first probability in the distribution and find the weighted mean of
-    # the rest of the distribution. Find the difference between these weighted means and normalize
-    def _distance_from_target(self, actual):
+        mean_distance = np.mean(list(dist_dict.values()))
+        return mean_distance
+
+    # given a distrubution, find the loss between that and the target
+    # THEN COMPUTE THE REWARD. RETURN REWARD
+    def _compute_reward_from_distribution(self, actual):
         distance = (actual * np.arange(actual.shape[0] - 1, -1, -1)).sum()
         max_distance = actual.shape[0] - 1
         return 1. - distance / max_distance
