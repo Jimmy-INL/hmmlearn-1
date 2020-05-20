@@ -228,31 +228,6 @@ class TimedGaussianHMM(_TimeBaseHMM):
             fwdlattice /= fwdlattice.sum(axis=1)[:, np.newaxis]
         
         return logprob, fwdlattice
-
-    # predict only what the hmm thinks of that frame
-    # WE DON'T USE THIS ANYMORE. WE USE THE VERSION IN ENSEMBLE_HMM.PY
-    def predict_proba_simple(self, X, lengths=None):
-        all_model_preds = list()
-        for value in X:
-            model_preds = list()
-            for mean, covar in zip(self.means_, self.covars_):
-                dist = norm(loc=mean, scale=covar)
-                try:
-                    prediction = dist.pdf(value)
-                except:
-                    print('ALERT! Message from Julian. I crashed in predict_proba_simple() in hmmlearn/hmm.py')
-                    print('mean', mean)
-                    print('covar', covar)
-                    print('value', value)
-                    import pdb; pdb.set_trace()
-                    pass
-                model_preds.append(prediction)
-            all_model_preds.append(model_preds)
-        all_model_preds = np.array(all_model_preds)
-        all_model_preds = np.squeeze(all_model_preds)  # (10, 3)
-        all_model_preds /= all_model_preds.sum(axis=1)[:, np.newaxis]
-        return all_model_preds
-                
                                    
     def predict_proba(self, X, lengths=None):
         import pdb; pdb.set_trace()

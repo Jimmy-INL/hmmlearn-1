@@ -145,7 +145,6 @@ class EnsembleHMM(object):
         for feature_idx in range(num_features):
             feature_video = np.array(feature_dict[feature_idx])[:, np.newaxis]
             model = self.models[feature_idx]
-            import pdb; pdb.set_trace()
             fwd_lattice = model.get_fwd_lattice(feature_video)
             probs = fwd_lattice[-1]
             probs /= np.sum(probs)

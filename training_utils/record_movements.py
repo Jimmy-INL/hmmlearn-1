@@ -1,6 +1,5 @@
 import sys
 sys.path.insert(0, '/storage/jalverio/fetch_gym')
-import gym
 import pdb; pdb.set_trace()
 from mujoco_py import GlfwContext
 GlfwContext(offscreen=True)  # Create a window to init GLFW.
@@ -8,318 +7,343 @@ import numpy as np
 import pickle
 from PIL import Image
 import os
-from np.random import normal, uniform, choice
+from numpy.random import normal, uniform, choice
 
+import pickle
+import cv2
+import os
+import shutil
+import re
 
-env = gym.make('FetchPickAndPlace-v1', reward_type='visual', reward_scale=5, dir_name='')
-env.reset()
+sys.path.insert(0, '/storage/jalverio/fetch_gym/gym/envs/robotics/')
+from robot_env import RobotEnv
 
-def generate_pickup_dataset():
-    video_counter = 0
-    while video_counter < 1000:
-        print(video_counter)
+class DatasetGenerator(object):
+    def __init__(self):
+        objects = [['red block', [0.8, 0.8]]]
+        env = RobotEnv(reward_scale=5, dir_name='', objects=objects)
         env.reset()
-        success = generate_pickup_trajectory(video_counter)
-        video_counter += int(success)
+        self.env = env
 
-def get_noisy_action(action):
-    noise = normal(loc=action, std=0.01)
-    return action + noise
+        self.all_frames = list()
+        self.all_observations = list()
+        self.frames = list()
+        self.observations = list()
+        self.root = '/storage/jalverio/hmmlearn/training_utils/pickup_dataset'
 
-def constrain_target(target):
-    target = target.copy()
-    target[0] = max(target[0], 1.05)
-    target[0] = min(target[0], 1.55)
-    target[1] = max(target[1], 0.4)
-    target[1] = min(target[1], 1.05)
-    target[2] = max(target[2], 0.45)
-    return target
+    def snapshot(self):
+        self.frames.append(self.env.render(mode='rgb_array'))
+        observation = self.env.get_obs()
+        finger_width, object_rel_pos, object_rot, object_velp, object_velr, left_finger_rel, right_finger_rel, ready_to_close, distance, object_pos, object_velocity, object_rel_velocity, robot_velocity, robot_position, object_pos, fractional_distance, fractional_distances = observation
+        obs_dict = dict()
+        obs_dict['finger_width'] = finger_width
+        obs_dict['object_relative_position'] = object_rel_pos
+        obs_dict['object_rotation'] = object_rot
+        obs_dict['object_velp'] = object_velp
+        obs_dict['object_velr'] = object_velr
+        obs_dict['left_finger_relative_position'] = left_finger_rel
+        obs_dict['right_finger_relative_position'] = right_finger_rel
+        obs_dict['ready_to_close'] = ready_to_close
+        obs_dict['distance'] = distance
+        obs_dict['object_pos'] = object_pos
+        obs_dict['object_velocity'] = object_velocity
+        obs_dict['object_relative_velocity'] = object_rel_velocity
+        obs_dict['robot_velocity'] = robot_velocity
+        obs_dict['robot_position'] = robot_position
+        obs_dict['object_position'] = object_pos
+        obs_dict['fractional_distance'] = fractional_distance
+        obs_dict['fractional_distances'] = fractional_distances
 
-def noisy_move_to_position(target, target_fingers, precision=None, random_fingers=False):
-    observations = list()
-    for _ in range(25):
-        vector_to_target = target - env.get_robot_position()
-        unit_vector_to_target = vector_to_target / np.linalg.norm(vector_to_target)
-        magnitude = np.random.uniform(low=-0.03, high=0.03)
-        action = unit_vector_to_target * magnitude
-        noisy_action = get_noisy_action(action)
-        finger_action = choice([0, 1]) if random_figners else target_fingers
-        env.step(noisy_action)
-        observations.append(env.get_obs())
-        if precision:
-            difference = np.linalg.norm(env.get_robot_position() - target)
-            if difference <  precision:
+        self.observations.append(obs_dict)
+
+    def end_episode(self, success):
+        if success:
+            regex = r'\d+\.pkl'
+            pkl_files = [path for path in os.listdir(self.root) if re.match(regex, path)]
+            if not pkl_files:
+                next_idx = 0
+            else:
+                next_idx = max([int(path.replace('.pkl', '')) for path in pkl_files]) + 1
+            obs_save_path = os.path.join(self.root, '%s.pkl' % next_idx)
+            with open(obs_save_path, 'wb') as f:
+                pickle.dump(self.observations, f)
+            mp4_save_path = os.path.join(self.root, '%s.mp4' % next_idx)
+            self.write_mp4(mp4_save_path)
+            frames_save_path = os.path.join(self.root, '%s_frames.pkl' % next_idx)
+            with open(frames_save_path, 'wb') as f:
+                pickle.dump(self.frames, f)
+        self.observations = list()
+        self.frames = list()
+
+    def generate_pickup_dataset(self):
+        fail_counter = 0
+        video_counter = 0
+        while video_counter < 1000:
+            self.env.reset()
+            success = self.generate_pickup_trajectory()
+            video_counter += int(success)
+            if not success:
+                fail_counter += 1
+            print(video_counter, 'successes')
+            print(fail_counter, 'fails \n')
+            self.end_episode(success)
+
+
+    def constrain_target(self, target):
+        target = target.copy()
+        target[0] = max(target[0], 1.05)
+        target[0] = min(target[0], 1.55)
+        target[1] = max(target[1], 0.4)
+        target[1] = min(target[1], 1.05)
+        target[2] = max(target[2], 0.45)
+        return target
+
+    # move from start to the goal, don't bump the block, finish within total_moves
+    def interpolate_trajectory(self, target, finger_target, total_moves):
+        for move in range(int(total_moves)):
+            object_position = self.env.get_object_position()
+            robot_position = self.env.get_robot_position()
+            target_vector = object_position - robot_position
+            if np.all(abs(target_vector) < 0.03):
+                goal = target_vector
+                finger_goal = finger_target
+            else:
+                velocity = uniform(low=0.001, high=0.03)
+                target_unit_vector = target_vector / np.linalg.norm(target_vector)
+                target_vector_clean = target_unit_vector * velocity
+                noise = normal(loc=0, scale=0.01, size=3)
+                goal = robot_position + target_vector_clean + noise
+                finger_goal = choice([0, 1])
+
+            goal = self.constrain_target(goal)
+            if self.collision_check(goal, finger_goal):
+                return move
+            self.custom_move(goal, finger_goal, precision_threshold=0.01, attempts=25)
+            self.snapshot()
+        return total_moves
+
+    # spend num_moves moving in the area around the block. Don't bump the block.
+    def move_near_block(self, moves_remaining):
+        while moves_remaining > 0:
+            object_position = self.env.get_object_position()
+            target = uniform(low=object_position - 0.1, high=object_position + 0.1)
+            moves_used = self.interpolate_trajectory(target, 1, moves_remaining)
+            moves_remaining -= moves_used
+
+    # working
+    # you generally don't want save frames! Only for debugging
+    def custom_move(self, goal, finger_goal, stability_threshold=2, precision_threshold=0.005, attempts=20, save_frames=False):
+        error = goal - self.env.get_robot_position()
+        finger_error = np.array([finger_goal - self.env.get_finger_width()])
+        error = np.concatenate([error, finger_error], axis=0)
+
+        stability_counter = 0
+        for attempt in range(attempts):
+            output = self.env.controller.update(error)
+            if finger_goal == 0:
+                output[-1] = -1
+            step_output = self.env._step_raw([*output])
+            if save_frames:
+                snapshot()
+
+            error = goal - self.env.get_robot_position()
+            finger_error = np.array([finger_goal - self.env.get_finger_width()])
+            error = np.concatenate([error, finger_error], axis=0)
+            if np.linalg.norm(error[:3]) < 0.005 and abs(finger_error) < 0.003:
+                stability_counter += 1
+            else:
+                stability_counter = 0
+            if stability_counter >= stability_threshold:
+                return step_output
+        return step_output
+
+
+    # get totally aligned, ready to grab
+    def align_with_block(self):
+        current_position = self.env.get_robot_position()
+        self.custom_move(current_position, 1)  # open fingers early
+        self.snapshot()
+        grab_height = uniform(0.45, 0.48)
+        y_offset = uniform(-0.02, 0.02)
+        x_offset = uniform(-0.05, 0.05)
+        target_position = self.env.get_object_position()
+        target_position[2] = grab_height
+        target_position[1] += y_offset
+        target_position[0] += x_offset
+
+        current_position = self.env.get_robot_position()
+        collision = False
+        for weight in np.arange(0, 1, 0.1):
+            new_position = current_position * weight + target_position * (1 - weight)
+            if self.collision_check(new_position, 1):
+                collision = True
+        object_position = self.env.get_object_position()
+        current_position = self.env.get_robot_position()
+        if collision:
+            fix_target = self.env.get_object_position()
+            if target_position[0] > current_position[0]:
+                fix_target[0] += 0.05
+            else:
+                fix_target[0] -= 0.05
+            fix_target[2] += 0.03
+            self.custom_move(fix_target, 1)
+            self.snapshot()
+
+        self.custom_move(target_position, 1)
+        self.snapshot()
+
+    # actually grab the block
+    def grab_block(self):
+        y_offset = uniform(-0.02, 0.02)
+        x_offset = uniform(-0.02, 0.02)
+        z_position = uniform(0.45, 0.48)
+
+        target_position = self.env.get_object_position()
+        target_position[0] += x_offset
+        target_position[1] += y_offset
+        target_position[2] = z_position
+        self.custom_move(target_position, 1)
+        self.snapshot()
+        self.custom_move(target_position, 0)
+        self.snapshot()
+
+    # Once you're holding the block, drop it
+    def drop_block(self):
+        noise = uniform(low=-0.03, high=0.03, size=3)
+
+        action.append(1)
+        self.env.step(action)
+        self.snapshot()
+
+    def noisy_lift(self):
+        for _ in range(25):
+            target = self.env.get_robot_position()
+            target[0] += uniform(-0.03, 0.03)
+            target[1] += uniform(-0.03, 0.03)
+            target[2] += uniform(low=-0.01, high=0.03)  # move upwards, in expectation
+
+            self.custom_move(target, 0)
+            self.snapshot()
+            object_position = self.env.get_object_position()
+            if object_position[2] > 0.624:
                 break
-    return observations
-        
-#working
-def generate_pickup_trajectory(video_counter):
-    all_data = list()
 
-    # random jitters to start
-    num_jitters = round(abs(normal(loc=0, scale=2)))
-    for jitter in range(num_jitters):
-        action = uniform(low=-0.03, high=0.03, size=4)
-        env.step(action)
 
-    # move to a position within a large cube around the block
-    object_position = env.get_object_position()
-    target_x = uniform(low=object_position[0] - 0.1, high=object_position[0] + 0.1)
-    target_y = uniform(low=object_position[1] - 0.1, high=object_position[1] + 0.1)
-    target_z = uniform(low=object_position[2] - 0.1, high=object_position[2] + 0.1)
-    target_width = choice([0, 1])
-    noisy_move_to_position([target_x, target_y, target_z], target_width, random_fingers=True, precision=0.1)
+    def random_movements(self, num_movements):
+        for _ in range(num_movements):
+            action = uniform(low=-0.03, high=0.03, size=4)
+            self.env.step(action)
+            self.snapshot()
 
-    # move to a position within a small cube around the block (maybe bump into it)
-    object_position = env.get_object_position()
-    target_x = uniform(low=object_position[0] - 0.05, high=object_position[0])
-    target_y = uniform(low=object_position[1] - 0.05, high=object_position[1])
-    target_z = uniform(low=object_position[2] - 0.05, high=object_position[2])
-    target_width = 1
-    noisy_move_to_target([target_x, target_y, target_z], target_width, random_fingers=False, precision=0.05)
 
-    
+    def write_mp4(self, path=None):
+        if path is None:
+            path = '/storage/jalverio/test.mp4'
+        shape = (500, 500)
+        writer = cv2.VideoWriter(path, 0x7634706d, 5, shape)
+        for frame in self.frames:
+            writer.write(frame)
+        writer.release()
 
-    
-    
-                       
-    
+    # return true if reaching the fingers would collide with the block
+    def collision_check(self, hand_target, finger_width):
+        assert finger_width in [0, 1]
+        object_position = self.env.get_object_position()
+        object_x, object_y, object_z = object_position
+        x_target, y_target, z_target = hand_target
+        x_in_range = False
+        y_in_range = False
+        z_in_range = False
 
-    
-    all_data = list()
-    robot_position = env.get_robot_position()
-    object_position_quat = env.sim.data.get_joint_qpos('object0:joint')
-    object_starting_z = object_position_quat[2].copy()
-    finger_width = env.get_finger_width()
+        y_difference = abs(y_target - object_y)
+        if y_difference < 0.09:
+            y_in_range = True
+        z_difference = abs(z_target - object_z)
+        if z_difference < 0.075:
+            z_in_range = True
+        x_difference = abs(x_target - object_x)
+        if x_difference  < 0.045:
+            x_in_range = True
+        collision = x_in_range and y_in_range and z_in_range
+        x_difference = round(x_difference, 2)
+        y_difference = round(y_difference, 2)
+        z_difference = round(z_difference, 2)
+        return collision
 
-    frame = env.render(mode='rgb_array')
-    all_data.append((frame.copy(), robot_position.copy(), object_position_quat.copy(), finger_width))
 
-    x = np.random.uniform(1.1, 1.5)
-    y = np.random.uniform(0.45, 1.05)
-    z = np.random.uniform(0.5, 0.75)
-    random_start_position = np.array([x, y, z])
-    _, frame_data = env.move(random_start_position, return_frames=True, precision_threshold=0.05, fingers=True)
-    all_data.extend(frame_data)
+    def generate_pickup_trajectory(self):
+        self.snapshot()
 
-    x_noise = np.random.uniform(low=-0.03, high=0.03)
-    y_noise = np.random.uniform(low=-0.03, high=0.03)
-    z_noise = np.random.uniform(low=0.04, high=0.08)
-    object_position_quat = env.sim.data.get_joint_qpos('object0:joint')
-    object_position = object_position_quat[:3]
-    preparing_to_grab = object_position + np.stack([x_noise, y_noise, z_noise])
-    _, frame_data = env.move(preparing_to_grab, return_frames=True, gripper=1, precision_threshold=0.05, stability_threshold=1, fingers=True)
-    all_data.extend(frame_data)
+        # random jitters to start
+        num_jitters = round(abs(normal(loc=0, scale=5)))
+        self.random_movements(num_jitters)
+        # print(num_jitters, 'jitters')
 
-    x1_noise = np.random.uniform(low=-0.03, high=0.03)
-    y1_noise = np.random.uniform(low=-0.03, high=0.03)
-    z1_noise = np.random.uniform(low=0.0, high=0.03)
-    object_position_quat = env.sim.data.get_joint_qpos('object0:joint')
-    object_position = object_position_quat[:3]
-    half_ready_to_grab = object_position + np.array([x1_noise, y1_noise, 0.03])
-    _, frame_data = env.move(half_ready_to_grab, return_frames=True, stability_threshold=1, precision_threshold=0.01, fingers=True)
-    all_data.extend(frame_data)
+        # move to a position within a large cube around the block
+        moves_near_block = 25 - num_jitters
+        # print(moves_near_block, 'moves near block')
+        self.move_near_block(moves_near_block)
 
-    object_position_quat = env.sim.data.get_joint_qpos('object0:joint')
-    object_position = object_position_quat[:3]
-    ready_to_grab = object_position + np.array([x1_noise, y1_noise, z1_noise])
-    _, frame_data = env.move(ready_to_grab, return_frames=True, gripper=-1, stability_threshold=0, fingers=True)
-    for _ in range(5):
-        env.step_postprocessed([0., 0., 0., -1.])
+        # # prepare to grab
+        self.align_with_block()
+        self.grab_block()
+        self.noisy_lift()
 
-    x2 = np.random.uniform(1.1, 1.5)
-    y2 = np.random.uniform(0.45, 1.05)
-    z2 = np.random.uniform(0.5, 0.85)
-    random_end_position = np.array([x2, y2, z2])
-    _, frame_data = env.move(random_end_position, return_frames=True, gripper=-1, fingers=True)
-    all_data.extend(frame_data)
+        self.write_mp4()
 
-    padding = 50 - len(all_data)
-    for _ in range(padding):
-        all_data.append(all_data[-1])
-
-    # quality control
-    for frame_data in all_data:
-        assert len(frame_data) == 4
-        frame, robot_position, object_position_quat, finger_width = frame_data
-        assert frame.shape == (500, 500, 3)
-        assert robot_position.shape == (3,)
-        assert object_position_quat.shape == (7,)
-        assert isinstance(finger_width, np.float64)
-
-    # make sure the object actually got picked up
-    end_object_z = env.sim.data.get_joint_qpos('object0:joint')[2]
-    if end_object_z < (object_starting_z + 0.05):
-        return False
-    if env.get_finger_width() < 0.04:
+        if self.env.get_object_position()[2] > 0.48:
+            print('success')
+            return True
+        print('failure')
         return False
 
-    with open('/storage/jalverio/fetch_gym/models_and_data/pickup_videos/%s.pkl' % video_counter, 'wb') as f:
-        pickle.dump(all_data, f)
-    return True
+
+    # # format: [x,y,z,quat]
+    # def generate_object_dataset(self):
+    #     for _ in range(30):
+    #         self.env.step([0, 0, 1, -1])
+    #     prefix = '/storage/jalverio/fetch_gym/models_and_data/cube_training_test/'
+    #     self.env.render(mode='rgb_array')
+    #     for counter in range(500):
+    #         # max x: 1.5, min x: 1.1
+    #         # max y: 1.1, min y: 0.4
+    #         # min z: 0.424, max z: 0.9
+    #         x = np.random.uniform(1.1, 1.5)
+    #         # y = np.random.uniform(0.55, 0.95)
+    #         y_lower_bound = 0.25 * (x - 1.1) + 0.45
+    #         y_upper_bound = 0.25 * (1.5 - x) + 0.95
+    #         y = np.random.uniform(y_lower_bound, y_upper_bound)
+    #         z = np.random.uniform(0.45, 0.75)
+    #         pos = [x, y, z]
+    #         quat = np.random.uniform(size=4)
+    #         quat /= np.linalg.norm(quat)
+    #         quat = quat.tolist()
+    #         xpos = np.array(pos + quat)
+    #         env.sim.data.set_joint_qpos('object0:joint', xpos)
+
+    #         with open(os.path.join(prefix, '%s.txt' % counter), 'w+') as f:
+    #             f.write('xyzquat=' + str(xpos))
+    #         image = env.render(mode='rgb_array')
+    #         np.save(os.path.join(prefix, '%s.npy' % counter), image)
+    #         image = Image.fromarray(image)
+    #         image.save(os.path.join(prefix, '%s.png' % counter), 'PNG')
+    #         print(counter)
+
+    def test(self):
+        object_position = self.env.get_object_position()
+        target = object_position.copy()
+        target[1] -= 0.045
+        target[2] = 0.45
+        self.custom_move(target, 0, save_frames=True)
+        self.write_mp4()
 
 
-def generate_approach_dataset():
-    for video_counter in range(10):
-        print(video_counter)
-        env.reset()
-        env.generate_approach_trajectory(video_counter)
 
-
-def generate_approach_trajectory(env, video_counter):
-    all_data = list()
-    robot_position = env.sim.data.get_site_xpos('robot0:grip')
-    object_position_quat = env.sim.data.get_joint_qpos('object0:joint')
-    object_starting_z = object_position_quat[2].copy()
-
-    frame = env.render(mode='rgb_array')
-    all_data.append((frame.copy(), robot_position.copy(), object_position_quat.copy()))
-
-    x = np.random.uniform(1.1, 1.5)
-    y = np.random.uniform(0.45, 1.05)
-    z = np.random.uniform(0.5, 0.75)
-    random_start_position = np.array([x, y, z])
-    _, frame_data = env.move(random_start_position, return_frames=True, precision_threshold=0.05)
-    all_data.extend(frame_data)
-
-    x_noise = np.random.uniform(low=-0.03, high=0.03)
-    y_noise = np.random.uniform(low=-0.03, high=0.03)
-    z_noise = np.random.uniform(low=0.04, high=0.08)
-    object_position_quat = env.sim.data.get_joint_qpos('object0:joint')
-    object_position = object_position_quat[:3]
-    preparing_to_grab = object_position + np.stack([x_noise, y_noise, z_noise])
-    _, frame_data = env.move(preparing_to_grab, return_frames=True, gripper=1, precision_threshold=0.05,
-                              stability_threshold=1)
-    all_data.extend(frame_data)
-
-    x1_noise = np.random.uniform(low=-0.03, high=0.03)
-    y1_noise = np.random.uniform(low=-0.03, high=0.03)
-    z1_noise = np.random.uniform(low=0.0, high=0.03)
-    object_position_quat = env.sim.data.get_joint_qpos('object0:joint')
-    object_position = object_position_quat[:3]
-    half_ready_to_grab = object_position + np.array([x1_noise, y1_noise, 0.03])
-    _, frame_data = env.move(half_ready_to_grab, return_frames=True, stability_threshold=1, precision_threshold=0.01)
-    all_data.extend(frame_data)
-
-    object_position_quat = env.sim.data.get_joint_qpos('object0:joint')
-    object_position = object_position_quat[:3]
-    ready_to_grab = object_position + np.array([x1_noise, y1_noise, z1_noise])
-    _, frame_data = env.move(ready_to_grab, return_frames=True, gripper=-1, stability_threshold=0)
-    for _ in range(5):
-        env.step([0, 0, 0, -1])
-
-    x2 = np.random.uniform(1.1, 1.5)
-    y2 = np.random.uniform(0.45, 1.05)
-    z2 = np.random.uniform(0.5, 0.85)
-    random_end_position = np.array([x2, y2, z2])
-    _, frame_data = env.move(random_end_position, return_frames=True, gripper=-1)
-    all_data.extend(frame_data)
-
-    padding = 50 - len(all_data)
-    for _ in range(padding):
-        all_data.append(all_data[-1])
-
-    # quality control
-    for frame, robot_position, object_position_quat in all_data:
-        assert frame.shape == (500, 500, 3)
-        assert robot_position.shape == (3,)
-        assert object_position_quat.shape == (7,)
-
-    # make sure the object actually got picked up
-    end_object_z = env.sim.data.get_joint_qpos('object0:joint')[2]
-    if end_object_z < (object_starting_z + 0.05):
-        return
-
-    with open('/storage/jalverio/sentence_tracker/models_and_data/pickup_videos/%s.pkl' % video_counter, 'wb') as f:
-        pickle.dump(all_data, f)
-
-
-# format: [x,y,z,quat]
-def generate_object_dataset():
-    for _ in range(30):
-        env.step([0, 0, 1, -1])
-    prefix = '/storage/jalverio/fetch_gym/models_and_data/cube_training_test/'
-    env.render(mode='rgb_array')
-    for counter in range(500):
-        # max x: 1.5, min x: 1.1
-        # max y: 1.1, min y: 0.4
-        # min z: 0.424, max z: 0.9
-        x = np.random.uniform(1.1, 1.5)
-        # y = np.random.uniform(0.55, 0.95)
-        y_lower_bound = 0.25 * (x - 1.1) + 0.45
-        y_upper_bound = 0.25 * (1.5 - x) + 0.95
-        y = np.random.uniform(y_lower_bound, y_upper_bound)
-        z = np.random.uniform(0.45, 0.75)
-        pos = [x, y, z]
-        quat = np.random.uniform(size=4)
-        quat /= np.linalg.norm(quat)
-        quat = quat.tolist()
-        xpos = np.array(pos + quat)
-        env.sim.data.set_joint_qpos('object0:joint', xpos)
-
-        with open(os.path.join(prefix, '%s.txt' % counter), 'w+') as f:
-            f.write('xyzquat=' + str(xpos))
-        image = env.render(mode='rgb_array')
-        np.save(os.path.join(prefix, '%s.npy' % counter), image)
-        image = Image.fromarray(image)
-        image.save(os.path.join(prefix, '%s.png' % counter), 'PNG')
-        print(counter)
-
-
-def generate_robot_dataset():
-    prefix = '/storage/jalverio/fetch_gym/models_and_data/hand_training/'
-    env.render(mode='rgb_array')
-    image_idx = 0
-    while image_idx < 500:
-        env.reset()
-        for _ in range(35):
-            env.step(np.random.uniform(-1, 1, size=4))
-        if np.random.uniform(0, 1) > 0.6:
-            randomize_fingers()
-        # pos = env.sim.data.get_site_xpos('robot0:grip')
-        r_finger_pos = env.sim.data.get_body_xipos('robot0:r_gripper_finger_link')
-        l_finger_pos = env.sim.data.get_body_xipos('robot0:l_gripper_finger_link')
-        pos = (r_finger_pos + l_finger_pos) / 2
-        max_x = max(r_finger_pos[0], l_finger_pos[0])
-        min_x = min(r_finger_pos[0], l_finger_pos[0])
-        max_y = max(r_finger_pos[1], l_finger_pos[1])
-        min_y = min(r_finger_pos[1], l_finger_pos[1])
-        max_z = max(r_finger_pos[2], l_finger_pos[2])
-        min_z = min(r_finger_pos[2], l_finger_pos[2])
-        if not (max_x < 1.478 and min_x > 1.08 and max_y < 0.957 and min_y > 0.52 and max_z < 0.806 and min_z > 0.449):
-            continue
-        image = env.render(mode='rgb_array')
-        text = 'xyz=' + str(pos) + '\n'
-        np.save(prefix + '%s.npy' % image_idx, image)
-        Image.fromarray(image).save(prefix + '%s.png' % image_idx, 'PNG')
-        with open(prefix + '%s.txt' % image_idx, 'w+') as f:
-            f.write(text)
-            f.flush()
-        print(image_idx)
-        image_idx += 1
-
-def get_robot_position():
-    r_finger_position = env.sim.data.get_body_xipos('robot0:r_gripper_finger_link')
-    l_finger_position = env.sim.data.get_body_xipos('robot0:l_gripper_finger_link')
-    mean_position = np.stack([l_finger_position, r_finger_position], axis=0).mean(axis=0)
-    return mean_position
-
-def test():
-    for _ in range(6):
-        env.step([11, 0, -1, 0])
-    env.render(mode='human')
-    save()
-    import pdb; pdb.set_trace()
-    
-
-def save():
-    Image.fromarray(env.render(mode='rgb_array')).save('/storage/jalverio/test.png', 'PNG')
-
+    def save(self):
+        Image.fromarray(self.env.render(mode='rgb_array')).save('/storage/jalverio/test.png', 'PNG')
 
 
 
 if __name__ == '__main__':
-    test()
-    generate_pickup_dataset()
-    # generate_object_dataset()
-    # generate_robot_dataset()
+    gen = DatasetGenerator()
+    gen.generate_pickup_dataset()
