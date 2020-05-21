@@ -30,11 +30,14 @@ class DatasetGenerator(object):
         self.frames = list()
         self.observations = list()
         self.root = '/storage/jalverio/hmmlearn/training_utils/pickup_dataset'
+        self.previous_object_relative_position = None
+        self.previous_robot_position = None
+        self.previous_object_position = None
 
     def snapshot(self):
         self.frames.append(self.env.render(mode='rgb_array'))
         observation = self.env.get_obs()
-        finger_width, object_rel_pos, object_rot, object_velp, object_velr, left_finger_rel, right_finger_rel, ready_to_close, distance, object_pos, object_velocity, object_rel_velocity, robot_velocity, robot_position, object_pos, fractional_distance, fractional_distances = observation
+        finger_width, object_rel_pos, object_rot, object_velp, object_velr, left_finger_rel, right_finger_rel, ready_to_close, distance, object_position, robot_position, fractional_distance, fractional_distances = observation
         obs_dict = dict()
         obs_dict['finger_width'] = finger_width
         obs_dict['object_relative_position'] = object_rel_pos
@@ -45,15 +48,29 @@ class DatasetGenerator(object):
         obs_dict['right_finger_relative_position'] = right_finger_rel
         obs_dict['ready_to_close'] = ready_to_close
         obs_dict['distance'] = distance
-        obs_dict['object_pos'] = object_pos
-        obs_dict['object_velocity'] = object_velocity
-        obs_dict['object_relative_velocity'] = object_rel_velocity
-        obs_dict['robot_velocity'] = robot_velocity
         obs_dict['robot_position'] = robot_position
-        obs_dict['object_position'] = object_pos
+        obs_dict['object_position'] = object_position
         obs_dict['fractional_distance'] = fractional_distance
         obs_dict['fractional_distances'] = fractional_distances
 
+        # object relative velocity through object relative position
+        if self.previous_object_relative_position is None:
+            object_relative_velocity = np.zeros(3)
+            robot_velocity = np.zeros(3)
+            object_velocity = np.zeros(3)
+        else:
+            object_relative_velocity = obs_dict['object_relative_position'] - self.previous_object_relative_position
+            robot_velocity = obs_dict['robot_position'] - self.previous_robot_position
+            object_velocity = obs_dict['object_position'] - self.previous_object_position
+
+        obs_dict['object_relative_velocity'] = object_relative_velocity
+        obs_dict['robot_velocity'] = robot_velocity
+        obs_dict['object_velocity'] = object_velocity
+        
+        self.previous_object_relative_position = obs_dict['object_relative_position']
+        self.previous_robot_position = robot_position
+        self.previous_object_position = object_position
+        
         self.observations.append(obs_dict)
 
     def end_episode(self, success):
@@ -78,7 +95,7 @@ class DatasetGenerator(object):
     def generate_pickup_dataset(self):
         fail_counter = 0
         video_counter = 0
-        while video_counter < 1000:
+        while video_counter < 600:
             self.env.reset()
             success = self.generate_pickup_trajectory()
             video_counter += int(success)
@@ -291,7 +308,7 @@ class DatasetGenerator(object):
 
         self.write_mp4()
 
-        if self.env.get_object_position()[2] > 0.48:
+        if self.env.get_object_position()[2] > 0.54:
             print('success')
             return True
         print('failure')
