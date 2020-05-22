@@ -86,9 +86,8 @@ class DatasetGenerator(object):
                 pickle.dump(self.observations, f)
             mp4_save_path = os.path.join(self.root, '%s.mp4' % next_idx)
             self.write_mp4(mp4_save_path)
-            frames_save_path = os.path.join(self.root, '%s_frames.pkl' % next_idx)
-            with open(frames_save_path, 'wb') as f:
-                pickle.dump(self.frames, f)
+            npy_save_path = mp4_save_path.replace('mp4', 'npy')
+            np.save(npy_save_path, np.array(self.frames))
         self.observations = list()
         self.frames = list()
 

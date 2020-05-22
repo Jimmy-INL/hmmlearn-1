@@ -9,6 +9,10 @@ NUM_RESAMPLES = 3
 root = '/storage/jalverio/hmmlearn/training_utils/pickup_dataset'
 new_root = '/storage/jalverio/hmmlearn/training_utils/pickup_dataset_downsampled'
 
+if not os.path.isdir(root):
+    root = '/Users/julianalverio/code/hmmlearn/training_utils/pickup_dataset'
+    new_root = '/Users/julianalverio/code/hmmlearn/training_utils/pickup_dataset_downsampled'    
+
 
 def write_mp4(frames, path=None):
     if path is None:
@@ -41,21 +45,19 @@ def resample_videos():
         print('resampling %s out of %s' % (idx, max(idxs)))
         for resample in range(NUM_RESAMPLES):
             observations_path = os.path.join(root, '%s.pkl' % idx)
-            frames_path = os.path.join(root, '%s_frames.pkl' % idx)
+            frames_path = os.path.join(root, '%s.npy' % idx)
             with open(observations_path, 'rb') as f:
                 observations = pickle.load(f)
-            with open(frames_path, 'rb') as f:
-                frames = pickle.load(f)
+            frames = np.load(frames_path)
             length = len(observations)
             downsampled_idxs = downsample_idxs(length)
             new_observations = [observations[down_idx] for down_idx in downsampled_idxs]
             new_frames = [frames[down_idx] for down_idx in downsampled_idxs]
 
-            new_frames_path = os.path.join(new_root, '%s_frames.pkl' % idx)
+            new_frames_path = os.path.join(new_root, '%s.npy' % idx)
             new_observations_path = os.path.join(new_root, '%s.pkl' % idx)
             new_mp4_path = os.path.join(new_root, '%s.mp4' % idx)
-            with open(new_frames_path, 'wb') as f:
-                pickle.dump(new_frames, f)
+            np.save(new_frames_path, new_frames)
             with open(new_observations_path, 'wb') as f:
                 pickle.dump(new_observations, f)
             write_mp4(new_frames, path=new_mp4_path)

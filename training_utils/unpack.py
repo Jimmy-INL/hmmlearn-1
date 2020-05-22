@@ -3,7 +3,6 @@ import cv2
 import os
 
 
-
 def mp4_to_pkl(root, path):
     vidcap = cv2.VideoCapture(path)
     success, frame = vidcap.read()
@@ -19,9 +18,9 @@ def mp4_to_pkl(root, path):
 if __name__ == '__main__':
     root = '/storage/jalverio/hmmlearn/training_utils/pickup_dataset'
     if not os.path.isdir(root):
-        root = '/Users/julianalverio/hmmlearn/training_utils/pickup_dataset'
+        root = '/Users/julianalverio/code/hmmlearn/training_utils/pickup_dataset'
     mp4_files = [path for path in os.listdir(root) if path.endswith('.mp4')]
-    for count, mp4_file in enumerate(mp4_files):
+    for count, mp4_file in enumerate(mp4_files, 1):
         print('%s out of %s' % (count, len(mp4_files)))
         mp4_path = os.path.join(root, mp4_file)
         mp4_to_pkl(root, mp4_path)
