@@ -18,6 +18,8 @@ def mp4_to_pkl(root, path):
 
 if __name__ == '__main__':
     root = '/storage/jalverio/hmmlearn/training_utils/pickup_dataset'
+    if not os.path.isdir(root):
+        root = '/Users/julianalverio/hmmlearn/training_utils/pickup_dataset'
     mp4_files = [path for path in os.listdir(root) if path.endswith('.mp4')]
     for count, mp4_file in enumerate(mp4_files):
         print('%s out of %s' % (count, len(mp4_files)))
