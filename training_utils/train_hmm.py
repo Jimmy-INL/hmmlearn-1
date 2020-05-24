@@ -43,18 +43,21 @@ transmat = np.array(transmat)
 NUM_ATTEMPTS = 10
 
 all_histories = list()
-
+improvement_histories = list()
 for attempt in range(NUM_ATTEMPTS):
     model = GaussianHMM(n_components=3, covariance_type='diag', params='tmc', init_params='mc', verbose=True)
     model.startprob_ = startprob
     model.transmat_ = transmat
-
     model.fit(all_videos)
     all_histories.append(model.custom_history)
+    improvement_history = model.monitor_.custom_history
+    improvement_histories.append(np.array(improvement_history))
 
 all_histories = np.array(all_histories)
 with open('/storage/jalverio/hmmlearn/training_utils/all_histories.npy', 'wb') as f:
     pickle.dump(all_histories, f)
+with open('/storage/jalverio/hmmlearn/training_utils/improvement_history.npy', 'wb') as f:
+    pickle.dump(improvement_histories, f)
 print('saved.')
 
 
