@@ -62,6 +62,7 @@ class DatasetGenerator(object):
             object_relative_velocity = obs_dict['object_relative_position'] - self.previous_object_relative_position
             robot_velocity = obs_dict['robot_position'] - self.previous_robot_position
             object_velocity = obs_dict['object_position'] - self.previous_object_position
+        assert object_velocity.shape == (3,)
 
         obs_dict['object_relative_velocity'] = object_relative_velocity
         obs_dict['robot_velocity'] = robot_velocity

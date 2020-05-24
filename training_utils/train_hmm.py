@@ -40,7 +40,9 @@ transmat = [[0.99, 0.01, 0.],
 transmat = np.array(transmat)
 
 
-NUM_ATTEMPTS = 5
+NUM_ATTEMPTS = 10
+
+all_histories = list()
 
 for attempt in range(NUM_ATTEMPTS):
     model = GaussianHMM(n_components=3, covariance_type='diag', params='tmc', init_params='mc', verbose=True)
@@ -48,4 +50,10 @@ for attempt in range(NUM_ATTEMPTS):
     model.transmat_ = transmat
 
     model.fit(all_videos)
+    all_histories.append(model.custom_history)
+
+all_histories = np.array(all_histories)
+np.save('/storage/jalverio/hmmlearn/training_utils/all_histories.npy', all_histories)
+print('saved.')
+
 
