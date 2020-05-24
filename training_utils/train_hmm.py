@@ -53,7 +53,8 @@ for attempt in range(NUM_ATTEMPTS):
     all_histories.append(model.custom_history)
 
 all_histories = np.array(all_histories)
-np.save('/storage/jalverio/hmmlearn/training_utils/all_histories.npy', all_histories)
+with open('/storage/jalverio/hmmlearn/training_utils/all_histories.npy', 'wb') as f:
+    pickle.dump(all_histories, f)
 print('saved.')
 
 
