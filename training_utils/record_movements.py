@@ -37,7 +37,7 @@ class DatasetGenerator(object):
     def snapshot(self):
         self.frames.append(self.env.render(mode='rgb_array'))
         observation = self.env.get_obs()
-        finger_width, object_rel_pos, object_rot, object_velp, object_velr, left_finger_rel, right_finger_rel, ready_to_close, distance, object_position, robot_position, fractional_distance, fractional_distances = observation
+        finger_width, object_rel_pos, object_rot, object_velp, object_velr, left_finger_rel, right_finger_rel, ready_to_close, edge_distances, object_position, robot_position, distances = observation
         obs_dict = dict()
         obs_dict['finger_width'] = finger_width
         obs_dict['object_relative_position'] = object_rel_pos
@@ -47,11 +47,10 @@ class DatasetGenerator(object):
         obs_dict['left_finger_relative_position'] = left_finger_rel
         obs_dict['right_finger_relative_position'] = right_finger_rel
         obs_dict['ready_to_close'] = ready_to_close
-        obs_dict['distance'] = distance
+        obs_dict['edge_distances'] = edge_distances
         obs_dict['robot_position'] = robot_position
         obs_dict['object_position'] = object_position
-        obs_dict['fractional_distance'] = fractional_distance
-        obs_dict['fractional_distances'] = fractional_distances
+        obs_dict['distances'] = distances
 
         # object relative velocity through object relative position
         if self.previous_object_relative_position is None:
@@ -104,7 +103,6 @@ class DatasetGenerator(object):
             print(video_counter, 'successes')
             print(fail_counter, 'fails \n')
             self.end_episode(success)
-
 
     def constrain_target(self, target):
         target = target.copy()
