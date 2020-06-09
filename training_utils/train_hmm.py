@@ -16,12 +16,12 @@ for idx in idxs:
         obs_dicts = pickle.load(f)
     video = list()
     for obs_dict in obs_dicts:
-        x_fractional_distance, y_fractional_distance, z_fractional_distance = obs_dict['fractional_distances']
+        x_distance, y_distance, z_distance = obs_dict['distances']
         finger_width = obs_dict['finger_width']
         object_height = obs_dict['object_position'][2] - 0.4247690273656512
         block_vertical_velocity = obs_dict['object_velocity'][2]
         relative_x_velocity, relative_y_velocity, relative_z_velocity = obs_dict['object_relative_velocity']
-        feature_vec = np.array([x_fractional_distance, y_fractional_distance, z_fractional_distance, finger_width, object_height, block_vertical_velocity, relative_x_velocity, relative_y_velocity, relative_z_velocity])
+        feature_vec = np.array([x_distance, y_distance, z_distance, finger_width, object_height, block_vertical_velocity, relative_x_velocity, relative_y_velocity, relative_z_velocity])
         video.append(feature_vec)
     video = np.array(video)  # 10 x feature_vec_length == 10x9
     assert video.shape == (10, 9)
